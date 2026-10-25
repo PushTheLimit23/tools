@@ -7,7 +7,8 @@ from mcp.server.fastmcp import FastMCP
 from youtube_transcript_api import YouTubeTranscriptApi
 
 # Geheimer Pfad als einfacher Zugriffsschutz, z. B. /mcp-7f3k9x2q
-SECRET_PATH = os.environ.get("MCP_PATH", "/mcp")
+_raw_path = os.environ.get("MCP_PATH", "/mcp").strip().strip("'\"").strip("/")
+SECRET_PATH = "/" + (_raw_path or "mcp")  # fuehrender "/" wird ergaenzt, falls er fehlt
 
 mcp = FastMCP(
     "youtube-transcript",
