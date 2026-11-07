@@ -1,7 +1,10 @@
 """YouTube-Transkript MCP-Server (Streamable HTTP) fuer claude.ai Custom Connector."""
 
+import json
 import os
 import re
+import urllib.parse
+import urllib.request
 
 from mcp.server.fastmcp import FastMCP
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -43,10 +46,30 @@ def fmt_time(seconds: float) -> str:
     return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
 
 
+def fetch_metadata(video_id: str) -> dict:
+    """Titel und Kanal ueber die oEmbed-Schnittstelle von YouTube (ohne API-Key).
+    Fehler hier duerfen das Transkript nicht verhindern -> leeres dict."""
+    watch_url = f"https://www.youtube.com/watch?v={video_id}"
+    api = "https://www.youtube.com/oembed?format=json&url=" + urllib.parse.quote(watch_url, safe="")
+    try:
+        req = urllib.request.Request(api, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.load(resp)
+        return {
+            "title": data.get("title"),
+            "channel": data.get("author_name"),
+            "channel_url": data.get("author_url"),
+            "url": watch_url,
+        }
+    except Exception:
+        return {"url": watch_url}
+
+
 @mcp.tool()
 def get_transcript(url: str, languages: list[str] | None = None) -> str:
-    """Holt das Transkript eines YouTube-Videos als Fliesstext mit Zeitmarken
-    (ca. jede Minute), damit auf Stellen im Video verwiesen werden kann.
+    """Holt Titel, Kanal und Transkript eines YouTube-Videos. Das Transkript kommt
+    als Fliesstext mit Zeitmarken (ca. jede Minute), damit auf Stellen im Video
+    verwiesen werden kann.
 
     Args:
         url: YouTube-Link (watch, youtu.be, shorts, live) oder Video-ID.
@@ -71,7 +94,13 @@ def get_transcript(url: str, languages: list[str] | None = None) -> str:
     if current:
         blocks.append(f"[{fmt_time(block_start)}] " + " ".join(current))
 
+    meta = fetch_metadata(video_id)
     header = (
+        f"Titel: {meta.get('title') or 'unbekannt'}\n"
+        f"Kanal: {meta.get('channel') or 'unbekannt'}"
+        + (f" ({meta['channel_url']})" if meta.get("channel_url") else "")
+        + "\n"
+        f"URL: {meta['url']}\n"
         f"Video-ID: {video_id}\n"
         f"Sprache: {fetched.language} "
         f"({'automatisch generiert' if fetched.is_generated else 'manuell'})\n\n"
